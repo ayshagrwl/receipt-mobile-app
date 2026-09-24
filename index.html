@@ -1349,22 +1349,45 @@ async function submitPayment() {
     <span>Recording Payment…</span>
   `;
 
+  const payload = {
+    action: 'pay',
+    rowIndex: currentInvoice.rowIndex,
+    cash: cash,
+    bank: bank,
+    discount: disc,
+    receipt: receipt,
+    remarks: remarks
+  };
+
+  let data = null;
+
   try {
-    const resp = await fetch(API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    // 1. Try POST with text/plain (CORS Simple Request: avoids preflight OPTIONS blocking)
+    try {
+      const resp = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      });
+      data = await resp.json();
+    } catch (postErr) {
+      console.warn('POST failed, attempting fallback via GET:', postErr);
+    }
+
+    // 2. Fallback to GET if POST was blocked by browser CORS
+    if (!data || (!data.success && !data.error)) {
+      const qs = new URLSearchParams({
         action: 'pay',
-        rowIndex: currentInvoice.rowIndex,
-        cash: cash,
-        bank: bank,
-        discount: disc,
+        rowIndex: String(currentInvoice.rowIndex),
+        cash: String(cash),
+        bank: String(bank),
+        discount: String(disc),
         receipt: receipt,
         remarks: remarks
-      })
-    });
-
-    const data = await resp.json();
+      }).toString();
+      const getResp = await fetch(`${API_URL}?${qs}`);
+      data = await getResp.json();
+    }
 
     if (data && data.success) {
       // 1. Update in-memory invoice object

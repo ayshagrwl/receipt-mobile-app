@@ -68,6 +68,18 @@ function doGet(e) {
       return corsOutput(fetchAllRecords());
     }
 
+    if (action === 'pay') {
+      const payData = {
+        rowIndex : e.parameter.rowIndex,
+        cash     : e.parameter.cash || 0,
+        bank     : e.parameter.bank || 0,
+        discount : e.parameter.discount || 0,
+        receipt  : e.parameter.receipt || '',
+        remarks  : e.parameter.remarks || ''
+      };
+      return corsOutput(recordPayment(payData));
+    }
+
     if (action === 'search') {
       return corsOutput(searchRecords(q));
     }
