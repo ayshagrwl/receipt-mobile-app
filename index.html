@@ -702,7 +702,7 @@ async function triggerSync(isManual = false, forceFull = false) {
 
   try {
     const hasExistingData = allRows && allRows.length > 0;
-    const action = (!forceFull && hasExistingData) ? 'fetchRecent&limit=1500' : 'fetchAll';
+    const action = forceFull ? 'fetchAll' : 'fetchRecent&limit=400';
     const url = `${API_URL}?action=${action}`;
 
     let resp = await fetch(url, { signal: controller.signal });
