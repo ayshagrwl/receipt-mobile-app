@@ -123,18 +123,19 @@ function searchRecords(q) {
 }
 
 // ============================================================
-//  recordPayment — updates a row with payment info
+//  recordPayment — updates invoice row + logs payment entry
+//  Supports split Cash + Bank payments
 // ============================================================
 function recordPayment(data) {
-  const rowIndex      = parseInt(data.rowIndex);
-  const paymentAmount = parseFloat(data.amount);
-  const mode          = String(data.mode || '').trim(); // "Cash" or "Bank"
+  const rowIndex     = parseInt(data.rowIndex);
+  const cashAmount   = parseFloat(data.cash  || 0);
+  const bankAmount   = parseFloat(data.bank  || 0);
+  const totalPayment = cashAmount + bankAmount;
+  const receiptNo    = String(data.receipt || '').trim();
+  const remarks      = String(data.remarks || '').trim();
 
-  if (!rowIndex || isNaN(paymentAmount) || paymentAmount <= 0) {
-    return { error: 'Invalid payment data.' };
-  }
-  if (mode !== 'Cash' && mode !== 'Bank') {
-    return { error: 'Mode must be "Cash" or "Bank".' };
+  if (!rowIndex || totalPayment <= 0) {
+    return { error: 'Enter at least a Cash or Bank amount.' };
   }
 
   const ss    = SpreadsheetApp.openById(SHEET_ID);
@@ -146,27 +147,87 @@ function recordPayment(data) {
 
   const currentPaid        = parseAmount(row[COL.PAID_UP]);
   const currentOutstanding = parseAmount(row[COL.OUTSTANDING]);
+  const existingReceipt    = String(row[COL.RECEIPT] || '').trim();
+  const existingRemarks    = String(row[COL.REMARKS] || '').trim();
 
-  const newPaid        = currentPaid + paymentAmount;
-  const newOutstanding = currentOutstanding - paymentAmount;
+  const newPaid        = currentPaid + totalPayment;
+  const newOutstanding = currentOutstanding - totalPayment;
 
-  // Write updates
-  sheet.getRange(rowIndex, COL.PAID_UP + 1)     .setValue(formatAmount(newPaid));
-  sheet.getRange(rowIndex, COL.OUTSTANDING + 1)  .setValue(formatAmount(newOutstanding));
-  sheet.getRange(rowIndex, COL.MODE + 1)         .setValue(mode);
+  // Determine MODE label
+  let mode = '';
+  if (cashAmount > 0 && bankAmount > 0) mode = 'Cash + Bank';
+  else if (cashAmount > 0)              mode = 'Cash';
+  else                                  mode = 'Bank';
+
+  // Append receipt number (don't overwrite existing ones)
+  const newReceipt = existingReceipt
+    ? (receiptNo ? existingReceipt + ' + ' + receiptNo : existingReceipt)
+    : receiptNo;
+
+  // Append remarks
+  const newRemarks = existingRemarks
+    ? (remarks ? existingRemarks + ' | ' + remarks : existingRemarks)
+    : remarks;
+
+  // ── Update invoice row ──────────────────────────────────────
+  sheet.getRange(rowIndex, COL.PAID_UP + 1)    .setValue(formatAmount(newPaid));
+  sheet.getRange(rowIndex, COL.OUTSTANDING + 1) .setValue(formatAmount(newOutstanding));
+  sheet.getRange(rowIndex, COL.MODE + 1)        .setValue(mode);
+  if (receiptNo) sheet.getRange(rowIndex, COL.RECEIPT + 1).setValue(newReceipt);
+  if (remarks)   sheet.getRange(rowIndex, COL.REMARKS + 1).setValue(newRemarks);
 
   // Auto-mark PAID if fully settled
   if (newOutstanding <= 0) {
     sheet.getRange(rowIndex, COL.STATUS + 1).setValue('PAID');
   }
 
-  return {
-    success     : true,
-    rowIndex    : rowIndex,
-    newPaidUp   : formatAmount(newPaid),
-    newOutstanding: formatAmount(newOutstanding),
+  // ── Append to PAYMENT_LOG sheet ────────────────────────────
+  logPayment(ss, {
+    date        : Utilities.formatDate(new Date(), 'Asia/Kolkata', 'dd MMM yyyy HH:mm'),
+    invoice     : String(row[COL.INVOICE]  || ''),
+    customer    : String(row[COL.CUSTOMER] || ''),
+    cash        : cashAmount > 0 ? formatAmount(cashAmount) : '',
+    bank        : bankAmount > 0 ? formatAmount(bankAmount) : '',
+    total       : formatAmount(totalPayment),
     mode        : mode,
+    receipt     : receiptNo,
+    remarks     : remarks,
+    outstanding : formatAmount(newOutstanding),
+  });
+
+  return {
+    success        : true,
+    rowIndex       : rowIndex,
+    newPaidUp      : formatAmount(newPaid),
+    newOutstanding : formatAmount(newOutstanding),
+    mode           : mode,
+    receipt        : newReceipt,
   };
+}
+
+// ============================================================
+//  logPayment — appends a row to PAYMENT_LOG sheet
+//  Creates the sheet + header if it doesn't exist yet
+// ============================================================
+function logPayment(ss, entry) {
+  const LOG_SHEET = 'PAYMENT_LOG';
+  let log = ss.getSheetByName(LOG_SHEET);
+
+  if (!log) {
+    log = ss.insertSheet(LOG_SHEET);
+    log.appendRow([
+      'Date & Time', 'Invoice Number', 'Customer',
+      'Cash', 'Bank', 'Total', 'Mode',
+      'Receipt No.', 'Remarks', 'Outstanding After'
+    ]);
+    log.getRange(1, 1, 1, 10).setFontWeight('bold');
+  }
+
+  log.appendRow([
+    entry.date, entry.invoice, entry.customer,
+    entry.cash, entry.bank, entry.total, entry.mode,
+    entry.receipt, entry.remarks, entry.outstanding,
+  ]);
 }
 
 // ============================================================
