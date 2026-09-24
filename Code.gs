@@ -37,13 +37,19 @@ function corsOutput(data) {
 }
 
 // ============================================================
-//  doGet — handles search requests
-//  ?action=search&q=QUERY
+//  doGet — handles fetchAll, search, ping requests
+//  ?action=fetchAll (fetches entire sheet for instant local search)
+//  ?action=search&q=QUERY (legacy query search)
+//  ?action=ping (healthcheck)
 // ============================================================
 function doGet(e) {
   try {
     const action = (e.parameter.action || '').trim();
     const q      = (e.parameter.q      || '').trim();
+
+    if (action === 'fetchAll' || action === 'all') {
+      return corsOutput(fetchAllRecords());
+    }
 
     if (action === 'search') {
       return corsOutput(searchRecords(q));
@@ -53,7 +59,7 @@ function doGet(e) {
       return corsOutput({ status: 'ok', sheet: SHEET_NAME });
     }
 
-    return corsOutput({ error: 'Unknown action. Use ?action=search&q=QUERY' });
+    return corsOutput({ error: 'Unknown action. Use ?action=fetchAll or ?action=search&q=QUERY' });
   } catch (err) {
     return corsOutput({ error: err.message });
   }
@@ -61,7 +67,7 @@ function doGet(e) {
 
 // ============================================================
 //  doPost — handles payment submissions
-//  Body JSON: { action:"pay", rowIndex:N, amount:500, mode:"Cash"|"Bank" }
+//  Body JSON: { action:"pay", rowIndex:N, cash:500, bank:200, receipt:"...", remarks:"..." }
 // ============================================================
 function doPost(e) {
   try {
@@ -73,6 +79,57 @@ function doPost(e) {
   } catch (err) {
     return corsOutput({ error: err.message });
   }
+}
+
+// ============================================================
+//  fetchAllRecords — returns all invoice records compactly
+// ============================================================
+function fetchAllRecords() {
+  const ss    = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName(SHEET_NAME);
+  const rows  = sheet.getDataRange().getValues();
+
+  const results = [];
+
+  // Start from row index 1 to skip header row
+  for (let i = 1; i < rows.length; i++) {
+    const row      = rows[i];
+    const invoice  = String(row[COL.INVOICE]  || '').trim();
+    const customer = String(row[COL.CUSTOMER] || '').trim();
+
+    if (!invoice && !customer) continue; // skip completely empty rows
+
+    let dateVal = row[COL.DATE];
+    let dateStr = '';
+    if (dateVal instanceof Date) {
+      dateStr = Utilities.formatDate(dateVal, 'Asia/Kolkata', 'dd MMM yyyy');
+    } else {
+      dateStr = String(dateVal || '').trim();
+    }
+
+    results.push([
+      i + 1,                                         // 0: rowIndex (1-based sheet row)
+      dateStr,                                       // 1: date
+      invoice,                                       // 2: invoice
+      customer,                                      // 3: customer
+      String(row[COL.AMOUNT]      || '').trim(),     // 4: amount
+      String(row[COL.PAID_UP]     || '').trim(),     // 5: paidUp
+      String(row[COL.STATUS]      || '').trim(),     // 6: status
+      String(row[COL.MODE]        || '').trim(),     // 7: mode
+      String(row[COL.OUTSTANDING] || '').trim(),     // 8: outstanding
+      String(row[COL.RECEIPT]     || '').trim(),     // 9: receipt
+      String(row[COL.REMARKS]     || '').trim(),     // 10: remarks
+      String(row[COL.BEAT]        || '').trim(),     // 11: beat
+      String(row[COL.AGENT]       || '').trim()      // 12: agent
+    ]);
+  }
+
+  return {
+    status    : 'ok',
+    total     : results.length,
+    updatedAt : Utilities.formatDate(new Date(), 'Asia/Kolkata', 'dd MMM yyyy HH:mm'),
+    rows      : results
+  };
 }
 
 // ============================================================
@@ -99,9 +156,17 @@ function searchRecords(q) {
     if (!invoice && !customer) continue; // skip completely empty rows
 
     if (invoice.includes(query) || customer.includes(query)) {
+      let dateVal = row[COL.DATE];
+      let dateStr = '';
+      if (dateVal instanceof Date) {
+        dateStr = Utilities.formatDate(dateVal, 'Asia/Kolkata', 'dd MMM yyyy');
+      } else {
+        dateStr = String(dateVal || '').trim();
+      }
+
       results.push({
         rowIndex    : i + 1,                      // 1-based sheet row (header is row 1)
-        date        : String(row[COL.DATE]        || ''),
+        date        : dateStr,
         invoice     : String(row[COL.INVOICE]     || ''),
         customer    : String(row[COL.CUSTOMER]    || ''),
         amount      : String(row[COL.AMOUNT]      || ''),
