@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <meta name="theme-color" content="#1e40af" />
+  <title>OM MARKETING — Receipt Lookup</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* smooth transitions */
+    .view { transition: opacity .18s ease; }
+    .fade-out { opacity: 0; pointer-events: none; }
+    /* sticky search bar shadow */
+    .search-bar-shadow { box-shadow: 0 2px 12px rgba(0,0,0,.15); }
+    /* card tap highlight */
+    .result-card:active { background-color: #dbeafe; }
+    /* payment mode buttons */
+    .mode-btn { transition: all .15s; }
+    .mode-btn.selected-cash { background: #16a34a; color: #fff; }
+    .mode-btn.selected-bank { background: #1d4ed8; color: #fff; }
+    /* spinner */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner { animation: spin .7s linear infinite; }
+    /* toast */
+    #toast { transition: opacity .3s, transform .3s; }
+    /* number kbd on amount input */
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen font-sans">
+
+<!-- ═══════════════════════════════════════════════════
+     TOP BAR
+════════════════════════════════════════════════════ -->
+<header class="bg-blue-800 text-white px-4 py-3 flex items-center gap-3 search-bar-shadow sticky top-0 z-50">
+  <button id="btnBack" class="hidden text-white text-xl leading-none pr-2" onclick="goBack()">&#8592;</button>
+  <div class="flex-1">
+    <p class="text-xs font-semibold uppercase tracking-widest opacity-70">OM MARKETING</p>
+    <p class="text-base font-bold leading-tight" id="headerTitle">Receipt Lookup</p>
+  </div>
+  <div id="spinnerWrap" class="hidden">
+    <svg class="spinner w-5 h-5 text-white" fill="none" viewBox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+    </svg>
+  </div>
+</header>
+
+<!-- ═══════════════════════════════════════════════════
+     VIEW 1 — SEARCH
+════════════════════════════════════════════════════ -->
+<div id="viewSearch" class="view px-4 pt-5 pb-8 max-w-lg mx-auto">
+
+  <!-- Mode tabs -->
+  <div class="flex bg-white rounded-xl shadow-sm mb-4 overflow-hidden border border-gray-200">
+    <button id="tabInvoice" onclick="setTab('invoice')"
+      class="flex-1 py-2.5 text-sm font-semibold text-blue-700 bg-blue-50 border-b-2 border-blue-700 transition">
+      🔢 Invoice No.
+    </button>
+    <button id="tabName" onclick="setTab('name')"
+      class="flex-1 py-2.5 text-sm font-semibold text-gray-500 bg-white border-b-2 border-transparent transition">
+      👤 Customer Name
+    </button>
+  </div>
+
+  <!-- Search input -->
+  <div class="relative mb-1">
+    <input id="searchInput" type="text"
+      inputmode="search"
+      placeholder="Type last 4–5 digits of invoice…"
+      class="w-full bg-white border border-gray-300 rounded-xl px-4 py-3 pr-12 text-base shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+      onkeydown="if(event.key==='Enter') doSearch()" />
+    <button onclick="doSearch()"
+      class="absolute right-2 top-1/2 -translate-y-1/2 bg-blue-700 text-white rounded-lg px-3 py-1.5 text-sm font-bold">
+      Search
+    </button>
+  </div>
+  <p id="searchHint" class="text-xs text-gray-400 mb-4 pl-1">Enter at least 2 characters, then press Search or Enter</p>
+
+  <!-- API URL notice (shown when not configured) -->
+  <div id="apiNotice" class="hidden bg-amber-50 border border-amber-300 rounded-xl p-4 mb-4 text-sm text-amber-800">
+    ⚠️ <strong>API not configured.</strong> Open <code>index.html</code> and set the <code>API_URL</code> constant to your Google Apps Script Web App URL.
+  </div>
+
+  <!-- Results -->
+  <div id="resultsList"></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     VIEW 2 — DETAIL + PAYMENT
+════════════════════════════════════════════════════ -->
+<div id="viewDetail" class="view hidden px-4 pt-5 pb-12 max-w-lg mx-auto">
+
+  <!-- Invoice info card -->
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 mb-4">
+    <div class="flex items-start justify-between gap-2 mb-3">
+      <div>
+        <p class="text-xs text-gray-400 uppercase tracking-wide">Invoice</p>
+        <p id="dInvoice" class="text-base font-bold text-gray-800 break-all"></p>
+      </div>
+      <span id="dStatus" class="text-xs font-bold px-2 py-1 rounded-full bg-gray-100 text-gray-600 whitespace-nowrap"></span>
+    </div>
+
+    <p class="text-xs text-gray-400 uppercase tracking-wide">Customer</p>
+    <p id="dCustomer" class="text-sm font-semibold text-gray-800 mb-3"></p>
+
+    <div class="grid grid-cols-3 gap-2 mb-3">
+      <div class="bg-gray-50 rounded-xl p-2.5 text-center">
+        <p class="text-xs text-gray-400">Date</p>
+        <p id="dDate" class="text-sm font-bold text-gray-700"></p>
+      </div>
+      <div class="bg-gray-50 rounded-xl p-2.5 text-center">
+        <p class="text-xs text-gray-400">Total Amount</p>
+        <p id="dAmount" class="text-sm font-bold text-gray-700"></p>
+      </div>
+      <div class="bg-gray-50 rounded-xl p-2.5 text-center">
+        <p class="text-xs text-gray-400">Mode</p>
+        <p id="dMode" class="text-sm font-bold text-gray-700"></p>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-2 mb-3">
+      <div class="bg-green-50 rounded-xl p-2.5 text-center border border-green-100">
+        <p class="text-xs text-green-600">Paid Up</p>
+        <p id="dPaidUp" class="text-base font-bold text-green-700"></p>
+      </div>
+      <div class="bg-red-50 rounded-xl p-2.5 text-center border border-red-100">
+        <p class="text-xs text-red-500">Outstanding</p>
+        <p id="dOutstanding" class="text-base font-bold text-red-600"></p>
+      </div>
+    </div>
+
+    <div id="dReceiptRow" class="text-xs text-gray-500 mb-1">
+      <span class="font-semibold text-gray-600">Receipt:</span> <span id="dReceipt"></span>
+    </div>
+    <div id="dRemarksRow" class="text-xs text-gray-500 mb-1">
+      <span class="font-semibold text-gray-600">Remarks:</span> <span id="dRemarks"></span>
+    </div>
+    <div id="dBeatRow" class="text-xs text-gray-500 mb-1">
+      <span class="font-semibold text-gray-600">Beat:</span> <span id="dBeat"></span>
+    </div>
+    <div id="dAgentRow" class="text-xs text-gray-500">
+      <span class="font-semibold text-gray-600">Agent:</span> <span id="dAgent"></span>
+    </div>
+  </div>
+
+  <!-- Payment form -->
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-4">
+    <p class="text-sm font-bold text-gray-700 mb-3">💰 Record Payment</p>
+
+    <label class="text-xs text-gray-500 font-semibold uppercase tracking-wide block mb-1">Amount (₹)</label>
+    <input id="payAmount" type="number" inputmode="decimal" placeholder="Enter amount"
+      class="w-full border border-gray-300 rounded-xl px-4 py-3 text-base mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+
+    <label class="text-xs text-gray-500 font-semibold uppercase tracking-wide block mb-2">Payment Mode</label>
+    <div class="flex gap-3 mb-4">
+      <button id="btnCash" onclick="selectMode('Cash')"
+        class="mode-btn flex-1 border border-green-500 text-green-700 rounded-xl py-3 font-bold text-sm">
+        💵 Cash
+      </button>
+      <button id="btnBank" onclick="selectMode('Bank')"
+        class="mode-btn flex-1 border border-blue-500 text-blue-700 rounded-xl py-3 font-bold text-sm">
+        🏦 Bank
+      </button>
+    </div>
+
+    <button id="btnSubmitPay" onclick="submitPayment()"
+      class="w-full bg-blue-700 text-white rounded-xl py-3.5 font-bold text-base shadow active:scale-95 transition">
+      ✅ Submit Payment
+    </button>
+  </div>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     TOAST NOTIFICATION
+════════════════════════════════════════════════════ -->
+<div id="toast"
+  class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-sm font-semibold px-5 py-3 rounded-full shadow-lg opacity-0 pointer-events-none z-50">
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     JAVASCRIPT
+════════════════════════════════════════════════════ -->
+<script>
+// ─────────────────────────────────────────────────────────────
+//  CONFIG  ← Paste your Apps Script Web App URL here
+// ─────────────────────────────────────────────────────────────
+const API_URL = 'YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';
+
+// ─────────────────────────────────────────────────────────────
+//  State
+// ─────────────────────────────────────────────────────────────
+let currentTab      = 'invoice';   // 'invoice' | 'name'
+let currentRecord   = null;        // the selected result object
+let selectedMode    = '';          // 'Cash' | 'Bank'
+let searchHistory   = [];          // for UX context
+
+// ─────────────────────────────────────────────────────────────
+//  On load
+// ─────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  if (!API_URL || API_URL.includes('YOUR_APPS_SCRIPT')) {
+    document.getElementById('apiNotice').classList.remove('hidden');
+  }
+  document.getElementById('searchInput').focus();
+});
+
+// ─────────────────────────────────────────────────────────────
+//  Tab switching
+// ─────────────────────────────────────────────────────────────
+function setTab(tab) {
+  currentTab = tab;
+  const input = document.getElementById('searchInput');
+  const hint  = document.getElementById('searchHint');
+  const ti    = document.getElementById('tabInvoice');
+  const tn    = document.getElementById('tabName');
+
+  if (tab === 'invoice') {
+    ti.className = 'flex-1 py-2.5 text-sm font-semibold text-blue-700 bg-blue-50 border-b-2 border-blue-700 transition';
+    tn.className = 'flex-1 py-2.5 text-sm font-semibold text-gray-500 bg-white border-b-2 border-transparent transition';
+    input.placeholder = 'Type last 4–5 digits of invoice…';
+    input.inputMode   = 'search';
+    hint.textContent  = 'Enter at least 2 characters — multiple matches will be listed';
+  } else {
+    tn.className = 'flex-1 py-2.5 text-sm font-semibold text-blue-700 bg-blue-50 border-b-2 border-blue-700 transition';
+    ti.className = 'flex-1 py-2.5 text-sm font-semibold text-gray-500 bg-white border-b-2 border-transparent transition';
+    input.placeholder = 'Type customer name…';
+    input.inputMode   = 'text';
+    hint.textContent  = 'Shows all matching customers with dates, amounts & pending balance';
+  }
+
+  document.getElementById('resultsList').innerHTML = '';
+  input.value = '';
+  input.focus();
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Search
+// ─────────────────────────────────────────────────────────────
+async function doSearch() {
+  const q = document.getElementById('searchInput').value.trim();
+  if (q.length < 2) { showToast('Enter at least 2 characters'); return; }
+
+  if (API_URL.includes('YOUR_APPS_SCRIPT')) {
+    showToast('⚠️ API URL not configured yet');
+    return;
+  }
+
+  setLoading(true);
+  const list = document.getElementById('resultsList');
+  list.innerHTML = '';
+
+  try {
+    const url  = `${API_URL}?action=search&q=${encodeURIComponent(q)}`;
+    const resp = await fetch(url);
+    const data = await resp.json();
+
+    if (data.error) { showToast('Error: ' + data.error); return; }
+
+    if (!data.results || data.results.length === 0) {
+      list.innerHTML = `<div class="text-center text-gray-400 mt-8">
+        <p class="text-3xl mb-2">🔍</p>
+        <p class="font-semibold">No results found</p>
+        <p class="text-sm mt-1">Try a different search term</p>
+      </div>`;
+      return;
+    }
+
+    renderResults(data.results, q, data.count);
+
+  } catch (err) {
+    showToast('Network error — check connection');
+    console.error(err);
+  } finally {
+    setLoading(false);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Render result cards
+// ─────────────────────────────────────────────────────────────
+function renderResults(results, query, total) {
+  const list = document.getElementById('resultsList');
+
+  const badge = total >= 50
+    ? `<p class="text-xs text-amber-600 mb-3">Showing first 50 of many results — refine your search for more accuracy</p>`
+    : `<p class="text-xs text-gray-400 mb-3">${total} result${total !== 1 ? 's' : ''} found</p>`;
+
+  list.innerHTML = badge;
+
+  results.forEach((r, i) => {
+    const outstanding = r.outstanding || '₹0';
+    const isPending   = outstanding && outstanding !== '₹0' && outstanding !== '0';
+    const badgeClass  = isPending ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700';
+    const badgeText   = isPending ? outstanding + ' pending' : 'Paid';
+
+    const card = document.createElement('div');
+    card.className = 'result-card bg-white rounded-2xl shadow-sm border border-gray-200 p-4 mb-3 cursor-pointer active:bg-blue-50 transition';
+    card.innerHTML = `
+      <div class="flex justify-between items-start gap-2">
+        <div class="flex-1 min-w-0">
+          <p class="text-xs text-gray-400 font-mono truncate">${esc(r.invoice)}</p>
+          <p class="text-sm font-bold text-gray-800 leading-snug mt-0.5 truncate">${esc(customerName(r.customer))}</p>
+        </div>
+        <span class="text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap ${badgeClass}">${esc(badgeText)}</span>
+      </div>
+      <div class="flex gap-4 mt-2 text-xs text-gray-500">
+        <span>📅 ${esc(r.date)}</span>
+        <span>💰 ${esc(r.amount)}</span>
+        <span class="${isPending ? 'text-red-500 font-semibold' : ''}">💳 Paid: ${esc(r.paidUp)}</span>
+      </div>
+      ${r.beat ? `<p class="text-xs text-gray-400 mt-1 truncate">📍 ${esc(r.beat)}</p>` : ''}
+    `;
+    card.addEventListener('click', () => openDetail(r));
+    list.appendChild(card);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Detail view
+// ─────────────────────────────────────────────────────────────
+function openDetail(r) {
+  currentRecord = r;
+  selectedMode  = '';
+
+  // Populate fields
+  setText('dInvoice',  r.invoice);
+  setText('dCustomer', r.customer);
+  setText('dDate',     r.date);
+  setText('dAmount',   r.amount);
+  setText('dPaidUp',   r.paidUp   || '₹0');
+  setText('dOutstanding', r.outstanding || '₹0');
+  setText('dMode',     r.mode     || '—');
+  setText('dReceipt',  r.receipt  || '—');
+  setText('dRemarks',  r.remarks  || '—');
+  setText('dBeat',     r.beat     || '—');
+  setText('dAgent',    r.agent    || '—');
+
+  // Status badge colour
+  const status = r.status || '';
+  const sBadge = document.getElementById('dStatus');
+  sBadge.textContent = status;
+  sBadge.className   = 'text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap ' +
+    (status.includes('PAID') ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700');
+
+  // Reset payment form
+  document.getElementById('payAmount').value = '';
+  document.getElementById('btnCash').className  = 'mode-btn flex-1 border border-green-500 text-green-700 rounded-xl py-3 font-bold text-sm';
+  document.getElementById('btnBank').className  = 'mode-btn flex-1 border border-blue-500 text-blue-700 rounded-xl py-3 font-bold text-sm';
+
+  // Switch views
+  showView('detail');
+  document.getElementById('headerTitle').textContent = 'Invoice Detail';
+  document.getElementById('btnBack').classList.remove('hidden');
+  window.scrollTo({ top: 0 });
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Payment
+// ─────────────────────────────────────────────────────────────
+function selectMode(mode) {
+  selectedMode = mode;
+  document.getElementById('btnCash').className = 'mode-btn flex-1 border border-green-500 rounded-xl py-3 font-bold text-sm ' +
+    (mode === 'Cash' ? 'selected-cash' : 'text-green-700');
+  document.getElementById('btnBank').className = 'mode-btn flex-1 border border-blue-500 rounded-xl py-3 font-bold text-sm ' +
+    (mode === 'Bank' ? 'selected-bank' : 'text-blue-700');
+}
+
+async function submitPayment() {
+  const amtInput = document.getElementById('payAmount');
+  const amount   = parseFloat(amtInput.value);
+
+  if (!currentRecord)         { showToast('No record selected');       return; }
+  if (!amount || amount <= 0) { showToast('Enter a valid amount');      return; }
+  if (!selectedMode)          { showToast('Select Cash or Bank mode');  return; }
+
+  if (API_URL.includes('YOUR_APPS_SCRIPT')) {
+    showToast('⚠️ API URL not configured yet');
+    return;
+  }
+
+  const btn = document.getElementById('btnSubmitPay');
+  btn.disabled   = true;
+  btn.textContent = '⏳ Submitting…';
+  setLoading(true);
+
+  try {
+    const resp = await fetch(API_URL, {
+      method  : 'POST',
+      headers : { 'Content-Type': 'application/json' },
+      body    : JSON.stringify({
+        action   : 'pay',
+        rowIndex : currentRecord.rowIndex,
+        amount   : amount,
+        mode     : selectedMode,
+      }),
+    });
+    const data = await resp.json();
+
+    if (data.success) {
+      // Update local state to reflect new values
+      currentRecord.paidUp      = data.newPaidUp;
+      currentRecord.outstanding = data.newOutstanding;
+      currentRecord.mode        = selectedMode;
+
+      // Update UI
+      setText('dPaidUp',      data.newPaidUp);
+      setText('dOutstanding', data.newOutstanding);
+      setText('dMode',        selectedMode);
+
+      amtInput.value = '';
+      selectedMode   = '';
+      document.getElementById('btnCash').className = 'mode-btn flex-1 border border-green-500 text-green-700 rounded-xl py-3 font-bold text-sm';
+      document.getElementById('btnBank').className = 'mode-btn flex-1 border border-blue-500 text-blue-700 rounded-xl py-3 font-bold text-sm';
+
+      showToast('✅ Payment recorded successfully!');
+    } else {
+      showToast('Error: ' + (data.error || 'Unknown error'));
+    }
+
+  } catch (err) {
+    showToast('Network error — check connection');
+    console.error(err);
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = '✅ Submit Payment';
+    setLoading(false);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Navigation
+// ─────────────────────────────────────────────────────────────
+function goBack() {
+  showView('search');
+  document.getElementById('headerTitle').textContent = 'Receipt Lookup';
+  document.getElementById('btnBack').classList.add('hidden');
+  currentRecord = null;
+}
+
+function showView(name) {
+  document.getElementById('viewSearch').classList.toggle('hidden', name !== 'search');
+  document.getElementById('viewDetail').classList.toggle('hidden', name !== 'detail');
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Helpers
+// ─────────────────────────────────────────────────────────────
+function setLoading(on) {
+  document.getElementById('spinnerWrap').classList.toggle('hidden', !on);
+}
+
+function setText(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val || '';
+}
+
+// Extract display name from "Customer Name - ID" format
+function customerName(raw) {
+  if (!raw) return '';
+  const dash = raw.lastIndexOf(' - ');
+  return dash > -1 ? raw.substring(0, dash).trim() : raw;
+}
+
+function esc(str) {
+  return String(str || '')
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.opacity   = '1';
+  t.style.transform = 'translateX(-50%) translateY(0)';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    t.style.opacity   = '0';
+    t.style.transform = 'translateX(-50%) translateY(8px)';
+  }, 3000);
+}
+</script>
+</body>
+</html>
