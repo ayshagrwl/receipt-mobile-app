@@ -67,7 +67,7 @@ function doGet(e) {
 
 // ============================================================
 //  doPost — handles payment submissions
-//  Body JSON: { action:"pay", rowIndex:N, cash:500, bank:200, receipt:"...", remarks:"..." }
+//  Body JSON: { action:"pay", rowIndex:N, cash:500, bank:200, discount:50, receipt:"...", remarks:"..." }
 // ============================================================
 function doPost(e) {
   try {
@@ -120,7 +120,8 @@ function fetchAllRecords() {
       String(row[COL.RECEIPT]     || '').trim(),     // 9: receipt
       String(row[COL.REMARKS]     || '').trim(),     // 10: remarks
       String(row[COL.BEAT]        || '').trim(),     // 11: beat
-      String(row[COL.AGENT]       || '').trim()      // 12: agent
+      String(row[COL.AGENT]       || '').trim(),     // 12: agent
+      String(row[COL.DISCOUNT]    || '').trim()      // 13: discount / CD
     ]);
   }
 
@@ -170,6 +171,7 @@ function searchRecords(q) {
         invoice     : String(row[COL.INVOICE]     || ''),
         customer    : String(row[COL.CUSTOMER]    || ''),
         amount      : String(row[COL.AMOUNT]      || ''),
+        discount    : String(row[COL.DISCOUNT]    || ''),
         paidUp      : String(row[COL.PAID_UP]     || ''),
         status      : String(row[COL.STATUS]      || ''),
         mode        : String(row[COL.MODE]        || ''),
@@ -189,18 +191,20 @@ function searchRecords(q) {
 
 // ============================================================
 //  recordPayment — updates invoice row + logs payment entry
-//  Supports split Cash + Bank payments
+//  Supports split Cash + Bank payments + Discount / CD
 // ============================================================
 function recordPayment(data) {
-  const rowIndex     = parseInt(data.rowIndex);
-  const cashAmount   = parseFloat(data.cash  || 0);
-  const bankAmount   = parseFloat(data.bank  || 0);
-  const totalPayment = cashAmount + bankAmount;
-  const receiptNo    = String(data.receipt || '').trim();
-  const remarks      = String(data.remarks || '').trim();
+  const rowIndex       = parseInt(data.rowIndex);
+  const cashAmount     = parseFloat(data.cash     || 0);
+  const bankAmount     = parseFloat(data.bank     || 0);
+  const discountAmount = parseFloat(data.discount || 0);
+  const totalPayment   = cashAmount + bankAmount;
+  const totalSettled   = totalPayment + discountAmount;
+  const receiptNo      = String(data.receipt || '').trim();
+  const remarks        = String(data.remarks || '').trim();
 
-  if (!rowIndex || totalPayment <= 0) {
-    return { error: 'Enter at least a Cash or Bank amount.' };
+  if (!rowIndex || totalSettled <= 0) {
+    return { error: 'Enter at least a Cash, Bank, or Discount amount.' };
   }
 
   const ss    = SpreadsheetApp.openById(SHEET_ID);
@@ -211,18 +215,21 @@ function recordPayment(data) {
   const row      = rowRange.getValues()[0];
 
   const currentPaid        = parseAmount(row[COL.PAID_UP]);
+  const currentDiscount    = parseAmount(row[COL.DISCOUNT]);
   const currentOutstanding = parseAmount(row[COL.OUTSTANDING]);
   const existingReceipt    = String(row[COL.RECEIPT] || '').trim();
   const existingRemarks    = String(row[COL.REMARKS] || '').trim();
 
   const newPaid        = currentPaid + totalPayment;
-  const newOutstanding = currentOutstanding - totalPayment;
+  const newDiscount    = currentDiscount + discountAmount;
+  const newOutstanding = currentOutstanding - totalSettled;
 
   // Determine MODE label
   let mode = '';
   if (cashAmount > 0 && bankAmount > 0) mode = 'Cash + Bank';
   else if (cashAmount > 0)              mode = 'Cash';
-  else                                  mode = 'Bank';
+  else if (bankAmount > 0)              mode = 'Bank';
+  else if (discountAmount > 0)          mode = 'Discount';
 
   // Append receipt number (don't overwrite existing ones)
   const newReceipt = existingReceipt
@@ -235,9 +242,12 @@ function recordPayment(data) {
     : remarks;
 
   // ── Update invoice row ──────────────────────────────────────
-  sheet.getRange(rowIndex, COL.PAID_UP + 1)    .setValue(formatAmount(newPaid));
-  sheet.getRange(rowIndex, COL.OUTSTANDING + 1) .setValue(formatAmount(newOutstanding));
-  sheet.getRange(rowIndex, COL.MODE + 1)        .setValue(mode);
+  if (discountAmount > 0 || newDiscount > 0) {
+    sheet.getRange(rowIndex, COL.DISCOUNT + 1).setValue(formatAmount(newDiscount));
+  }
+  sheet.getRange(rowIndex, COL.PAID_UP + 1).setValue(formatAmount(newPaid));
+  sheet.getRange(rowIndex, COL.OUTSTANDING + 1).setValue(formatAmount(newOutstanding));
+  if (mode) sheet.getRange(rowIndex, COL.MODE + 1).setValue(mode);
   if (receiptNo) sheet.getRange(rowIndex, COL.RECEIPT + 1).setValue(newReceipt);
   if (remarks)   sheet.getRange(rowIndex, COL.REMARKS + 1).setValue(newRemarks);
 
@@ -253,6 +263,7 @@ function recordPayment(data) {
     customer    : String(row[COL.CUSTOMER] || ''),
     cash        : cashAmount > 0 ? formatAmount(cashAmount) : '',
     bank        : bankAmount > 0 ? formatAmount(bankAmount) : '',
+    discount    : discountAmount > 0 ? formatAmount(discountAmount) : '',
     total       : formatAmount(totalPayment),
     mode        : mode,
     receipt     : receiptNo,
@@ -264,6 +275,7 @@ function recordPayment(data) {
     success        : true,
     rowIndex       : rowIndex,
     newPaidUp      : formatAmount(newPaid),
+    newDiscount    : formatAmount(newDiscount),
     newOutstanding : formatAmount(newOutstanding),
     mode           : mode,
     receipt        : newReceipt,
@@ -282,15 +294,15 @@ function logPayment(ss, entry) {
     log = ss.insertSheet(LOG_SHEET);
     log.appendRow([
       'Date & Time', 'Invoice Number', 'Customer',
-      'Cash', 'Bank', 'Total', 'Mode',
+      'Cash', 'Bank', 'Discount', 'Total', 'Mode',
       'Receipt No.', 'Remarks', 'Outstanding After'
     ]);
-    log.getRange(1, 1, 1, 10).setFontWeight('bold');
+    log.getRange(1, 1, 1, 11).setFontWeight('bold');
   }
 
   log.appendRow([
     entry.date, entry.invoice, entry.customer,
-    entry.cash, entry.bank, entry.total, entry.mode,
+    entry.cash, entry.bank, entry.discount || '', entry.total, entry.mode,
     entry.receipt, entry.remarks, entry.outstanding,
   ]);
 }

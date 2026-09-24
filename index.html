@@ -191,20 +191,20 @@
     <!-- 4-Stat KPI Grid -->
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-100">
       <div class="bg-slate-50 rounded-xl p-2 text-center border border-slate-100">
-        <p class="text-[10px] uppercase font-bold text-slate-400">Total Invoices</p>
-        <p id="pStatInvoices" class="text-base font-extrabold text-slate-800">0</p>
-      </div>
-      <div class="bg-slate-50 rounded-xl p-2 text-center border border-slate-100">
         <p class="text-[10px] uppercase font-bold text-slate-400">Total Billed</p>
-        <p id="pStatBilled" class="text-base font-extrabold text-slate-800">₹0</p>
+        <p id="pStatBilled" class="text-xs sm:text-sm font-extrabold text-slate-800">₹0</p>
       </div>
       <div class="bg-emerald-50/70 rounded-xl p-2 text-center border border-emerald-100">
         <p class="text-[10px] uppercase font-bold text-emerald-600">Total Paid</p>
-        <p id="pStatPaid" class="text-base font-extrabold text-emerald-700">₹0</p>
+        <p id="pStatPaid" class="text-xs sm:text-sm font-extrabold text-emerald-700">₹0</p>
+      </div>
+      <div class="bg-amber-50/70 rounded-xl p-2 text-center border border-amber-100">
+        <p class="text-[10px] uppercase font-bold text-amber-700">Discount/CD</p>
+        <p id="pStatDiscount" class="text-xs sm:text-sm font-extrabold text-amber-800">₹0</p>
       </div>
       <div class="bg-rose-50 rounded-xl p-2 text-center border border-rose-100">
         <p class="text-[10px] uppercase font-bold text-rose-500">Outstanding</p>
-        <p id="pStatOutstanding" class="text-base font-extrabold text-rose-700">₹0</p>
+        <p id="pStatOutstanding" class="text-xs sm:text-sm font-extrabold text-rose-700">₹0</p>
       </div>
     </div>
   </div>
@@ -280,15 +280,19 @@
       </div>
     </div>
 
-    <!-- Paid & Outstanding boxes -->
-    <div class="grid grid-cols-2 gap-2 mb-3">
+    <!-- Paid, Discount, and Outstanding 3-box row -->
+    <div class="grid grid-cols-3 gap-2 mb-3">
       <div class="bg-emerald-50 rounded-xl p-2.5 text-center border border-emerald-100">
-        <p class="text-[11px] text-emerald-700 font-bold uppercase">Paid Up</p>
-        <p id="dPaidUp" class="text-base sm:text-lg font-black text-emerald-700"></p>
+        <p class="text-[10px] text-emerald-700 font-bold uppercase">Paid Up</p>
+        <p id="dPaidUp" class="text-sm sm:text-base font-black text-emerald-700"></p>
+      </div>
+      <div class="bg-amber-50 rounded-xl p-2.5 text-center border border-amber-100">
+        <p class="text-[10px] text-amber-700 font-bold uppercase">Discount/CD</p>
+        <p id="dDiscount" class="text-sm sm:text-base font-black text-amber-700">₹0</p>
       </div>
       <div class="bg-rose-50 rounded-xl p-2.5 text-center border border-rose-100">
-        <p class="text-[11px] text-rose-600 font-bold uppercase">Outstanding</p>
-        <p id="dOutstanding" class="text-base sm:text-lg font-black text-rose-700"></p>
+        <p class="text-[10px] text-rose-600 font-bold uppercase">Outstanding</p>
+        <p id="dOutstanding" class="text-sm sm:text-base font-black text-rose-700"></p>
       </div>
     </div>
 
@@ -305,7 +309,7 @@
   <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
     <div class="flex items-center justify-between mb-3">
       <h3 class="text-sm font-black text-slate-800 flex items-center gap-1.5">
-        <span>💰</span> <span>Record Payment</span>
+        <span>💰</span> <span>Record Payment / Discount</span>
       </h3>
       <span id="dSettledBadge" class="hidden text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
         Fully Settled
@@ -313,38 +317,52 @@
     </div>
 
     <!-- Quick Fill Buttons -->
-    <div id="quickFillRow" class="flex gap-2 mb-3">
+    <div id="quickFillRow" class="flex gap-1.5 mb-3">
       <button type="button" onclick="quickFillPayment('cash')"
-        class="flex-1 py-1.5 px-2 bg-emerald-50 hover:bg-emerald-100 active:bg-emerald-200 border border-emerald-200 text-emerald-800 rounded-lg text-xs font-bold text-center transition">
-        ⚡ Fill Full in Cash
+        class="flex-1 py-1.5 px-1 bg-emerald-50 hover:bg-emerald-100 active:bg-emerald-200 border border-emerald-200 text-emerald-800 rounded-lg text-[11px] font-bold text-center transition">
+        ⚡ Full Cash
       </button>
       <button type="button" onclick="quickFillPayment('bank')"
-        class="flex-1 py-1.5 px-2 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 border border-blue-200 text-blue-800 rounded-lg text-xs font-bold text-center transition">
-        ⚡ Fill Full in Bank
+        class="flex-1 py-1.5 px-1 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 border border-blue-200 text-blue-800 rounded-lg text-[11px] font-bold text-center transition">
+        ⚡ Full Bank
+      </button>
+      <button type="button" onclick="quickFillPayment('discount')"
+        class="flex-1 py-1.5 px-1 bg-amber-50 hover:bg-amber-100 active:bg-amber-200 border border-amber-200 text-amber-800 rounded-lg text-[11px] font-bold text-center transition">
+        ⚡ Full Discount
       </button>
     </div>
 
-    <!-- Split Cash & Bank Inputs -->
-    <div class="grid grid-cols-2 gap-3 mb-3">
+    <!-- Split Cash, Bank & Discount Inputs (3 Columns) -->
+    <div class="grid grid-cols-3 gap-2 mb-3">
       <div>
-        <label class="text-[11px] text-emerald-700 font-bold uppercase tracking-wider block mb-1">💵 Cash (₹)</label>
+        <label class="text-[10px] text-emerald-700 font-bold uppercase tracking-wider block mb-1">💵 Cash (₹)</label>
         <input id="payCash" type="number" inputmode="decimal" placeholder="0"
-          class="w-full border border-emerald-300 rounded-xl px-3 py-2.5 text-base font-bold text-emerald-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          class="w-full border border-emerald-300 rounded-xl px-2.5 py-2.5 text-sm sm:text-base font-bold text-emerald-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
           oninput="updatePaymentPreview()" />
       </div>
       <div>
-        <label class="text-[11px] text-blue-700 font-bold uppercase tracking-wider block mb-1">🏦 Bank (₹)</label>
+        <label class="text-[10px] text-blue-700 font-bold uppercase tracking-wider block mb-1">🏦 Bank (₹)</label>
         <input id="payBank" type="number" inputmode="decimal" placeholder="0"
-          class="w-full border border-blue-300 rounded-xl px-3 py-2.5 text-base font-bold text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          class="w-full border border-blue-300 rounded-xl px-2.5 py-2.5 text-sm sm:text-base font-bold text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          oninput="updatePaymentPreview()" />
+      </div>
+      <div>
+        <label class="text-[10px] text-amber-700 font-bold uppercase tracking-wider block mb-1">🏷️ Disc (₹)</label>
+        <input id="payDiscount" type="number" inputmode="decimal" placeholder="0"
+          class="w-full border border-amber-300 rounded-xl px-2.5 py-2.5 text-sm sm:text-base font-bold text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
           oninput="updatePaymentPreview()" />
       </div>
     </div>
 
-    <!-- Dynamic Total & Balance After Payment Preview -->
+    <!-- Dynamic Total, Discount & Balance After Payment Preview -->
     <div id="paymentPreviewRow" class="hidden bg-slate-50 border border-slate-200 rounded-xl p-3 mb-3 text-xs">
       <div class="flex justify-between items-center mb-1">
-        <span class="text-slate-500 font-medium">Payment Amount:</span>
+        <span class="text-slate-500 font-medium">Cash + Bank Payment:</span>
         <span id="previewTotalPay" class="font-extrabold text-sm text-slate-800">₹0</span>
+      </div>
+      <div id="previewDiscountLine" class="flex justify-between items-center mb-1">
+        <span class="text-amber-700 font-medium">Discount / CD:</span>
+        <span id="previewDiscount" class="font-extrabold text-sm text-amber-700">₹0</span>
       </div>
       <div class="flex justify-between items-center pt-1 border-t border-slate-200">
         <span class="text-slate-500 font-medium">Remaining Balance:</span>
@@ -362,7 +380,7 @@
     <!-- Remarks -->
     <div class="mb-4">
       <label class="text-[11px] text-slate-500 font-bold uppercase tracking-wider block mb-1">Remarks</label>
-      <input id="payRemarks" type="text" placeholder="Optional notes (e.g. cheque no, reference)"
+      <input id="payRemarks" type="text" placeholder="Optional notes (e.g. CD reason, reference)"
         class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500" />
     </div>
 
@@ -391,7 +409,7 @@
 const API_URL = 'https://script.google.com/macros/s/AKfycbwPk_cqlYKQm8x02TVpus5iySuFVf05SrJDRlOegOOF7oNgBjADL9weSY5WrKNr10rR/exec';
 const LOCAL_DATA_URL = './data.json';
 const DB_NAME = 'OMMarketingAppDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Incremented for discount column support
 const STORE_NAME = 'cache_store';
 
 // ─────────────────────────────────────────────────────────────
@@ -434,7 +452,7 @@ function openDB() {
       }
     };
     req.onsuccess = () => resolve(req.result);
-    req.onerror = () => resolve(null); // fallback gracefully
+    req.onerror = () => resolve(null);
   });
 }
 
@@ -483,14 +501,13 @@ async function loadInitialData() {
 
   // 1. Try loading cached data from IndexedDB
   const cached = await getStoredData('all_rows');
-  const lastSync = await getStoredData('last_sync_time');
 
-  if (cached && Array.isArray(cached) && cached.length > 0) {
-    console.log(`Loaded ${cached.length} records from IndexedDB cache.`);
+  // Verify cached data has discount (row length >= 14 or latest version)
+  if (cached && Array.isArray(cached) && cached.length > 0 && cached[0].length >= 14) {
+    console.log(`Loaded ${cached.length} records with discount from cache.`);
     initData(cached);
     showLoadingBanner(false);
     updateSyncButtonStatus(`Loaded ${allInvoices.length.toLocaleString('en-IN')}`);
-    // Check for updates in background
     setTimeout(() => triggerSync(false), 800);
     return;
   }
@@ -590,6 +607,7 @@ function initData(rows) {
     const amtNum  = parseAmount(r[4]);
     const paidNum = parseAmount(r[5]);
     const outNum  = parseAmount(r[8]);
+    const discNum = parseAmount(r[13]); // Discount at index 13
 
     const invoiceObj = {
       rowIndex    : r[0],
@@ -605,8 +623,10 @@ function initData(rows) {
       remarks     : String(r[10] || '').trim(),
       beat        : String(r[11] || '').trim(),
       agent       : String(r[12] || '').trim(),
+      discount    : String(r[13] || '').trim(),
       amtNum      : amtNum,
       paidNum     : paidNum,
+      discNum     : discNum,
       outNum      : outNum,
       partyKey    : partyKey,
       displayName : name,
@@ -625,6 +645,7 @@ function initData(rows) {
         invoices         : [],
         totalAmount      : 0,
         totalPaid        : 0,
+        totalDiscount    : 0,
         totalOutstanding : 0,
         pendingCount     : 0,
         searchIndex      : ''
@@ -633,8 +654,9 @@ function initData(rows) {
 
     const p = partiesMap.get(partyKey);
     p.invoices.push(invoiceObj);
-    p.totalAmount += amtNum;
-    p.totalPaid   += paidNum;
+    p.totalAmount   += amtNum;
+    p.totalPaid     += paidNum;
+    p.totalDiscount += discNum;
     if (outNum > 0) {
       p.totalOutstanding += outNum;
       p.pendingCount++;
@@ -655,7 +677,7 @@ function initData(rows) {
   document.getElementById('badgePartyTotal').textContent = partiesList.length.toLocaleString('en-IN');
   document.getElementById('badgeInvoiceTotal').textContent = allInvoices.length.toLocaleString('en-IN');
 
-  // Trigger initial search view render
+  // Trigger search view render
   applySearchAndFilters();
 }
 
@@ -875,7 +897,7 @@ function applySearchAndFilters() {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  BATCH RENDERING (Smooth 60FPS scrolling)
+//  BATCH RENDERING
 // ─────────────────────────────────────────────────────────────
 function renderNextBatch() {
   const container = document.getElementById('resultsList');
@@ -968,6 +990,7 @@ function createPartyCard(p) {
       <div class="flex items-center gap-3">
         <span class="font-bold text-slate-700">📄 ${p.invoices.length} Invoice${p.invoices.length !== 1 ? 's' : ''}</span>
         <span>Total: <strong>${formatINR(p.totalAmount)}</strong></span>
+        ${p.totalDiscount > 0 ? `<span class="text-amber-700 font-medium">Disc: ${formatINR(p.totalDiscount)}</span>` : ''}
       </div>
       <span class="text-blue-700 font-bold flex items-center gap-1 text-xs hover:translate-x-0.5 transition">
         Show Invoices <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
@@ -1016,9 +1039,9 @@ function createInvoiceCard(inv, insideParty = false) {
     </div>
 
     <div class="flex items-center justify-between text-xs text-slate-500 pt-1">
-      <div class="truncate text-[11px] max-w-[230px]">
-        ${inv.receipt ? `<span class="mr-2">🧾 ${esc(inv.receipt)}</span>` : ''}
-        ${inv.beat ? `<span>📍 ${esc(inv.beat)}</span>` : ''}
+      <div class="truncate text-[11px] max-w-[240px] flex items-center gap-2">
+        ${inv.discNum > 0 ? `<span class="text-amber-700 font-semibold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">🏷️ ${formatINR(inv.discNum)} Disc</span>` : ''}
+        ${inv.receipt ? `<span class="truncate">🧾 ${esc(inv.receipt)}</span>` : ''}
       </div>
       <span class="text-blue-700 font-bold flex items-center gap-0.5 shrink-0">
         ${isPending ? 'Record Payment' : 'View Details'} →
@@ -1052,9 +1075,9 @@ function openPartyView(p, pushHistory = true) {
   }
 
   // Populate stats
-  setText('pStatInvoices', p.invoices.length);
   setText('pStatBilled', formatINR(p.totalAmount));
   setText('pStatPaid', formatINR(p.totalPaid));
+  setText('pStatDiscount', formatINR(p.totalDiscount));
   setText('pStatOutstanding', formatINR(p.totalOutstanding));
 
   // Reset tab counts & input
@@ -1156,6 +1179,7 @@ function openDetailView(inv, pushHistory = true) {
   setText('dDate', inv.date);
   setText('dAmount', inv.amount || '₹0');
   setText('dPaidUp', inv.paidUp || '₹0');
+  setText('dDiscount', inv.discount || (inv.discNum > 0 ? formatINR(inv.discNum) : '₹0'));
   setText('dOutstanding', inv.outstanding || '₹0');
   setText('dMode', inv.mode || '—');
   setText('dReceipt', inv.receipt || '—');
@@ -1176,6 +1200,7 @@ function openDetailView(inv, pushHistory = true) {
   // Reset payment form
   document.getElementById('payCash').value = '';
   document.getElementById('payBank').value = '';
+  document.getElementById('payDiscount').value = '';
   document.getElementById('payReceipt').value = '';
   document.getElementById('payRemarks').value = '';
   document.getElementById('paymentPreviewRow').classList.add('hidden');
@@ -1210,13 +1235,20 @@ function quickFillPayment(mode) {
 
   const cashInput = document.getElementById('payCash');
   const bankInput = document.getElementById('payBank');
+  const discInput = document.getElementById('payDiscount');
 
   if (mode === 'cash') {
     cashInput.value = remaining;
     bankInput.value = '';
-  } else {
+    discInput.value = '';
+  } else if (mode === 'bank') {
     bankInput.value = remaining;
     cashInput.value = '';
+    discInput.value = '';
+  } else if (mode === 'discount') {
+    discInput.value = remaining;
+    cashInput.value = '';
+    bankInput.value = '';
   }
 
   updatePaymentPreview();
@@ -1225,17 +1257,21 @@ function quickFillPayment(mode) {
 function updatePaymentPreview() {
   const cash = parseFloat(document.getElementById('payCash').value) || 0;
   const bank = parseFloat(document.getElementById('payBank').value) || 0;
-  const total = cash + bank;
+  const disc = parseFloat(document.getElementById('payDiscount').value) || 0;
+  const totalPay = cash + bank;
+  const totalSettled = totalPay + disc;
 
   const previewRow = document.getElementById('paymentPreviewRow');
   const previewTotal = document.getElementById('previewTotalPay');
+  const previewDisc = document.getElementById('previewDiscount');
   const previewRemaining = document.getElementById('previewRemaining');
 
-  if (total > 0 && currentInvoice) {
+  if (totalSettled > 0 && currentInvoice) {
     const curOutstanding = currentInvoice.outNum;
-    const remaining = curOutstanding - total;
+    const remaining = curOutstanding - totalSettled;
 
-    previewTotal.textContent = formatINR(total);
+    previewTotal.textContent = formatINR(totalPay);
+    previewDisc.textContent = formatINR(disc);
     previewRemaining.textContent = formatINR(remaining);
     previewRemaining.className = remaining <= 0 ? 'font-extrabold text-sm text-emerald-600' : 'font-extrabold text-sm text-rose-600';
     previewRow.classList.remove('hidden');
@@ -1245,17 +1281,18 @@ function updatePaymentPreview() {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  PAYMENT SUBMISSION
+//  PAYMENT & DISCOUNT SUBMISSION
 // ─────────────────────────────────────────────────────────────
 async function submitPayment() {
   const cash = parseFloat(document.getElementById('payCash').value) || 0;
   const bank = parseFloat(document.getElementById('payBank').value) || 0;
+  const disc = parseFloat(document.getElementById('payDiscount').value) || 0;
   const receipt = document.getElementById('payReceipt').value.trim();
   const remarks = document.getElementById('payRemarks').value.trim();
-  const total = cash + bank;
+  const totalSettled = cash + bank + disc;
 
   if (!currentInvoice) { showToast('No invoice selected'); return; }
-  if (total <= 0) { showToast('⚠️ Enter at least a Cash or Bank amount'); return; }
+  if (totalSettled <= 0) { showToast('⚠️ Enter at least a Cash, Bank, or Discount amount'); return; }
 
   const btn = document.getElementById('btnSubmitPay');
   btn.disabled = true;
@@ -1273,6 +1310,7 @@ async function submitPayment() {
         rowIndex: currentInvoice.rowIndex,
         cash: cash,
         bank: bank,
+        discount: disc,
         receipt: receipt,
         remarks: remarks
       })
@@ -1285,13 +1323,17 @@ async function submitPayment() {
       const oldOutstanding = currentInvoice.outNum;
       currentInvoice.paidUp = data.newPaidUp;
       currentInvoice.outstanding = data.newOutstanding;
+      if (data.newDiscount) currentInvoice.discount = data.newDiscount;
       currentInvoice.mode = data.mode;
       if (data.receipt) currentInvoice.receipt = data.receipt;
 
       const newOutNum = parseAmount(data.newOutstanding);
       const newPaidNum = parseAmount(data.newPaidUp);
+      const newDiscNum = parseAmount(data.newDiscount || currentInvoice.discount);
+
       currentInvoice.outNum = newOutNum;
       currentInvoice.paidNum = newPaidNum;
+      currentInvoice.discNum = newDiscNum;
 
       if (newOutNum <= 0) {
         currentInvoice.status = 'PAID';
@@ -1302,7 +1344,8 @@ async function submitPayment() {
       if (p) {
         const outDiff = oldOutstanding - newOutNum;
         p.totalOutstanding = Math.max(0, p.totalOutstanding - outDiff);
-        p.totalPaid += total;
+        p.totalPaid += (cash + bank);
+        p.totalDiscount += disc;
         p.pendingCount = p.invoices.filter(i => i.outNum > 0).length;
       }
 
@@ -1312,6 +1355,7 @@ async function submitPayment() {
       // 4. Update UI details card
       setText('dPaidUp', data.newPaidUp);
       setText('dOutstanding', data.newOutstanding);
+      if (data.newDiscount) setText('dDiscount', data.newDiscount);
       setText('dMode', data.mode);
       if (data.receipt) setText('dReceipt', data.receipt);
 
@@ -1327,11 +1371,15 @@ async function submitPayment() {
       // Reset payment form fields
       document.getElementById('payCash').value = '';
       document.getElementById('payBank').value = '';
+      document.getElementById('payDiscount').value = '';
       document.getElementById('payReceipt').value = '';
       document.getElementById('payRemarks').value = '';
       document.getElementById('paymentPreviewRow').classList.add('hidden');
 
-      showToast(`✅ Payment of ${formatINR(total)} recorded successfully!`);
+      let msg = `✅ Settlement recorded!`;
+      if (cash + bank > 0) msg += ` Paid: ${formatINR(cash + bank)}.`;
+      if (disc > 0) msg += ` Discount: ${formatINR(disc)}.`;
+      showToast(msg);
 
     } else {
       showToast('Error: ' + (data.error || 'Could not record payment'));
