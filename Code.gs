@@ -1,7 +1,21 @@
 // ============================================================
-//  OM MARKETING — Receipt Lookup API
+//  OM MARKETING — Receipt Entry & Lookup System
 //  Google Apps Script Web App (doGet + doPost)
 //  Sheet: ALL INVOICE PARTY (OM MARKETING) - MARCH-SEPT
+//  Preserves exact logic from ReceiptForm.html & original Code.gs
+//
+//  Columns in Sales Voucher sheet:
+//  D = Invoice Number (4)
+//  E = Customer (5)
+//  F = Amount (6)
+//  G = Overdue (7)
+//  H = Discount (8)     <-- Appended as formula: =old+val
+//  I = PAID-U (9)       <-- Appended as formula: =old+val
+//  J = Status (10)      <-- PAID if OUTSTAND <= 0 else PARTIAL
+//  K = MODE (11)        <-- DD-MMM-YYYY CASH ₹... + BANK ₹...
+//  L = OUTSTAND (12)    <-- NEVER TOUCHED (Formula preserved)
+//  M = RECEIPT (13)     <-- Appended with ' + '
+//  N = REMARKS (14)     <-- Appended with ' + '
 // ============================================================
 
 const SHEET_ID   = '1aNzEsD0v92fVZtklSj79ZxDtXCkySQxw63HVlydg88g';
@@ -29,13 +43,79 @@ const COL = {
 
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-// Fast pure-JS date formatter (0.001ms vs 3ms for Utilities.formatDate)
+// Pure-JS date formatter for sheet sync
 function formatFastDate(d) {
   if (!d) return '';
   if (d instanceof Date) {
     return d.getDate() + ' ' + MONTH_NAMES[d.getMonth()] + ' ' + d.getFullYear();
   }
   return String(d).trim();
+}
+
+// Spreadsheet resolver: supports both container-bound and standalone execution
+function getSpreadsheet() {
+  try {
+    const active = SpreadsheetApp.getActiveSpreadsheet();
+    if (active && active.getId()) return active;
+  } catch (e) {}
+  return SpreadsheetApp.openById(SHEET_ID);
+}
+
+// ============================================================
+//  Desktop Google Sheets UI Menu & Modal (ReceiptForm)
+// ============================================================
+function onOpen() {
+  try {
+    SpreadsheetApp.getUi()
+      .createMenu('Receipt Entry')
+      .addItem('Add Receipt', 'openReceiptForm')
+      .addToUi();
+  } catch (e) {}
+}
+
+function openReceiptForm() {
+  const ss = getSpreadsheet();
+  const sheet = ss.getActiveSheet ? ss.getActiveSheet() : ss.getSheetByName(SHEET_NAME);
+  const row = sheet.getActiveCell().getRow();
+
+  // Don't allow header row
+  if (row <= 1) {
+    SpreadsheetApp.getUi().alert('Please select an invoice row first.');
+    return;
+  }
+
+  // Read existing values
+  const invoice     = sheet.getRange(row, 4).getDisplayValue();  // D
+  const customer    = sheet.getRange(row, 5).getDisplayValue();  // E
+  const amount      = sheet.getRange(row, 6).getDisplayValue();  // F
+  const discount    = sheet.getRange(row, 8).getDisplayValue();  // H
+  const paid        = sheet.getRange(row, 9).getDisplayValue();  // I
+  const status      = sheet.getRange(row, 10).getDisplayValue(); // J
+  const mode        = sheet.getRange(row, 11).getDisplayValue(); // K
+  const outstanding = sheet.getRange(row, 12).getDisplayValue(); // L
+  const receipt     = sheet.getRange(row, 13).getDisplayValue(); // M
+  const remarks     = sheet.getRange(row, 14).getDisplayValue(); // N
+
+  if (!invoice) {
+    SpreadsheetApp.getUi().alert('The selected row does not contain an Invoice Number.');
+    return;
+  }
+
+  const template = HtmlService.createTemplateFromFile('ReceiptForm');
+  template.row         = row;
+  template.invoice     = invoice;
+  template.customer    = customer;
+  template.amount      = amount;
+  template.discount    = discount;
+  template.paid        = paid;
+  template.status      = status;
+  template.mode        = mode;
+  template.outstanding = outstanding;
+  template.receipt     = receipt;
+  template.remarks     = remarks;
+
+  const html = template.evaluate().setWidth(470).setHeight(720);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Record Receipt');
 }
 
 // ============================================================
@@ -48,19 +128,16 @@ function corsOutput(data) {
 }
 
 // ============================================================
-//  doGet — handles fetchRecent, fetchAll, search, ping requests
-//  ?action=fetchRecent&limit=1500 (super fast sync, ~1 second)
-//  ?action=fetchAll (full sheet export, ~3 seconds)
-//  ?action=search&q=QUERY (legacy query search)
-//  ?action=ping (healthcheck)
+//  doGet — handles fetchRecent, fetchAll, search, ping, pay requests
 // ============================================================
 function doGet(e) {
   try {
-    const action = (e.parameter.action || '').trim();
-    const q      = (e.parameter.q      || '').trim();
+    const params = (e && e.parameter) ? e.parameter : {};
+    const action = (params.action || '').trim();
+    const q      = (params.q      || '').trim();
 
     if (action === 'fetchRecent' || action === 'recent') {
-      const limit = parseInt(e.parameter.limit || 1500);
+      const limit = parseInt(params.limit || 1500);
       return corsOutput(fetchRecentRecords(limit));
     }
 
@@ -68,16 +145,20 @@ function doGet(e) {
       return corsOutput(fetchAllRecords());
     }
 
-    if (action === 'pay') {
+    if (action === 'pay' || action === 'saveReceipt') {
       const payData = {
-        rowIndex : e.parameter.rowIndex,
-        cash     : e.parameter.cash || 0,
-        bank     : e.parameter.bank || 0,
-        discount : e.parameter.discount || 0,
-        receipt  : e.parameter.receipt || '',
-        remarks  : e.parameter.remarks || ''
+        row       : params.row || params.rowIndex,
+        rowIndex  : params.row || params.rowIndex,
+        sheetName : params.sheetName || SHEET_NAME,
+        date      : params.date || '',
+        cash      : params.cash || 0,
+        bank      : params.bank || 0,
+        discount  : params.discount || 0,
+        receiptNo : params.receiptNo || params.receipt || '',
+        receipt   : params.receiptNo || params.receipt || '',
+        remarks   : params.remarks || ''
       };
-      return corsOutput(recordPayment(payData));
+      return corsOutput(saveReceipt(payData));
     }
 
     if (action === 'search') {
@@ -88,33 +169,310 @@ function doGet(e) {
       return corsOutput({ status: 'ok', sheet: SHEET_NAME });
     }
 
-    return corsOutput({ error: 'Unknown action. Use ?action=fetchRecent or ?action=fetchAll or ?action=search&q=QUERY' });
+    return corsOutput({ error: 'Unknown action. Use ?action=fetchRecent, ?action=fetchAll, or ?action=search&q=QUERY' });
   } catch (err) {
     return corsOutput({ error: err.message });
   }
 }
 
 // ============================================================
-//  doPost — handles payment submissions
-//  Body JSON: { action:"pay", rowIndex:N, cash:500, bank:200, discount:50, receipt:"...", remarks:"..." }
+//  doPost — handles payment submissions from web app
 // ============================================================
 function doPost(e) {
   try {
-    const data = JSON.parse(e.postData.contents);
-    if (data.action === 'pay') {
-      return corsOutput(recordPayment(data));
+    let data;
+    if (e && e.postData && e.postData.contents) {
+      data = JSON.parse(e.postData.contents);
+    } else if (e && e.parameter) {
+      data = e.parameter;
+    } else {
+      return corsOutput({ error: 'No POST data received.' });
     }
-    return corsOutput({ error: 'Unknown POST action' });
+
+    const action = String(data.action || '').trim();
+    if (action === 'pay' || action === 'saveReceipt' || !action) {
+      return corsOutput(saveReceipt(data));
+    }
+
+    return corsOutput({ error: 'Unknown POST action: ' + action });
   } catch (err) {
     return corsOutput({ error: err.message });
   }
+}
+
+// ============================================================
+//  saveReceipt — exact implementation matching original Code.gs
+//  and ReceiptForm.html
+// ============================================================
+function saveReceipt(data) {
+  const ss = getSpreadsheet();
+  const targetSheetName = data.sheetName || SHEET_NAME;
+  const sheet = ss.getSheetByName(targetSheetName);
+
+  if (!sheet) {
+    throw new Error('Sales sheet not found: ' + targetSheetName);
+  }
+
+  const row = Number(data.row || data.rowIndex);
+  if (!row || row < 2) {
+    throw new Error('Invalid row number: ' + row);
+  }
+
+  const cash     = Number(data.cash)     || 0;
+  const bank     = Number(data.bank)     || 0;
+  const discount = Number(data.discount) || 0;
+
+  // At least one payment/discount required
+  if (cash === 0 && bank === 0 && discount === 0) {
+    throw new Error('Please enter Cash, Bank, or Discount.');
+  }
+
+  /********************************************
+   * H = DISCOUNT (Column 8)
+   * Append numeric value while preserving formula
+   ********************************************/
+  if (discount !== 0) {
+    const discountCell = sheet.getRange(row, 8);
+    appendToExistingCell(discountCell, discount);
+  }
+
+  /********************************************
+   * I = PAID-U (Column 9)
+   * Existing formula is preserved:
+   * =1000+600 becomes =1000+600+500
+   ********************************************/
+  const totalPayment = cash + bank;
+  if (totalPayment !== 0) {
+    const paidCell = sheet.getRange(row, 9);
+    appendToExistingCell(paidCell, totalPayment);
+  }
+
+  /********************************************
+   * J = STATUS (Column 10)
+   *
+   * We DO NOT touch OUTSTAND (Column 12).
+   * It contains a formula (=F - H - I).
+   * We flush and simply read its calculated result.
+   ********************************************/
+  SpreadsheetApp.flush();
+
+  const outstandingCell = sheet.getRange(row, 12);
+  const outstandingValue = Number(outstandingCell.getValue()) || 0;
+
+  const statusCell = sheet.getRange(row, 10);
+  if (outstandingValue <= 0) {
+    statusCell.setValue('PAID');
+  } else {
+    statusCell.setValue('PARTIAL');
+  }
+
+  /********************************************
+   * K = MODE (Column 11)
+   * Append: DD-MMM-YYYY CASH ₹... + BANK ₹... + DISCOUNT ₹...
+   ********************************************/
+  const modeCell = sheet.getRange(row, 11);
+  const dateText = formatReceiptDate(data.date);
+
+  const paymentParts = [];
+  if (cash > 0) {
+    paymentParts.push('CASH ₹' + formatIndianNumber(cash));
+  }
+  if (bank > 0) {
+    paymentParts.push('BANK ₹' + formatIndianNumber(bank));
+  }
+  if (discount > 0) {
+    paymentParts.push('DISCOUNT ₹' + formatIndianNumber(discount));
+  }
+
+  const modeEntry = dateText + ' ' + paymentParts.join(' + ');
+  appendText(modeCell, modeEntry);
+
+  /********************************************
+   * M = RECEIPT (Column 13)
+   * Append receipt number
+   ********************************************/
+  const receiptNo = String(data.receiptNo || data.receipt || '').trim();
+  if (receiptNo) {
+    const receiptCell = sheet.getRange(row, 13);
+    appendText(receiptCell, receiptNo);
+  }
+
+  /********************************************
+   * N = REMARKS (Column 14)
+   * Append new remarks
+   ********************************************/
+  const remarks = String(data.remarks || '').trim();
+  if (remarks) {
+    const remarksCell = sheet.getRange(row, 14);
+    appendText(remarksCell, remarks);
+  }
+
+  /********************************************
+   * CREATE / UPDATE RECEIPTS SHEET
+   * Exact tab name: "Receipts" (11 columns)
+   ********************************************/
+  let receiptSheet = ss.getSheetByName('Receipts');
+  if (!receiptSheet) {
+    receiptSheet = ss.insertSheet('Receipts');
+    receiptSheet.appendRow([
+      'Receipt Date',
+      'Invoice Number',
+      'Customer',
+      'Invoice Amount',
+      'Cash',
+      'Bank',
+      'Discount',
+      'Total Payment',
+      'Receipt Number',
+      'Remarks',
+      'Sales Sheet Row'
+    ]);
+    receiptSheet.setFrozenRows(1);
+    try {
+      receiptSheet.getRange(1, 1, 1, 11).setFontWeight('bold');
+    } catch (e) {}
+  }
+
+  const invoice       = sheet.getRange(row, 4).getDisplayValue();
+  const customer      = sheet.getRange(row, 5).getDisplayValue();
+  const invoiceAmount = sheet.getRange(row, 6).getValue();
+
+  const receiptDate = data.date || Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Kolkata', 'yyyy-MM-dd');
+
+  receiptSheet.appendRow([
+    receiptDate,
+    invoice,
+    customer,
+    invoiceAmount,
+    cash || '',
+    bank || '',
+    discount || '',
+    totalPayment || '',
+    receiptNo || '',
+    remarks || '',
+    row
+  ]);
+
+  SpreadsheetApp.flush();
+
+  const finalOutstandingDisp = sheet.getRange(row, 12).getDisplayValue();
+  const finalPaidDisp        = sheet.getRange(row, 9).getDisplayValue();
+  const finalDiscountDisp    = sheet.getRange(row, 8).getDisplayValue();
+  const finalModeDisp        = sheet.getRange(row, 11).getDisplayValue();
+  const finalReceiptDisp     = sheet.getRange(row, 13).getDisplayValue();
+  const finalRemarksDisp     = sheet.getRange(row, 14).getDisplayValue();
+  const finalStatusDisp      = sheet.getRange(row, 10).getDisplayValue();
+
+  return {
+    success        : true,
+    row            : row,
+    rowIndex       : row,
+    outstanding    : outstandingValue,
+    newOutstanding : finalOutstandingDisp || ('₹' + formatIndianNumber(outstandingValue)),
+    newPaidUp      : finalPaidDisp,
+    newDiscount    : finalDiscountDisp,
+    mode           : finalModeDisp,
+    receipt        : finalReceiptDisp,
+    remarks        : finalRemarksDisp,
+    status         : finalStatusDisp
+  };
+}
+
+// Alias for backwards compatibility
+const recordPayment = saveReceipt;
+
+// ============================================================
+//  appendToExistingCell — appends numeric value while preserving formula
+//  e.g. =1000+600 becomes =1000+600+500
+// ============================================================
+function appendToExistingCell(cell, value) {
+  value = Number(value) || 0;
+  if (value === 0) return;
+
+  const formula = cell.getFormula();
+  const currentValue = cell.getValue();
+
+  // CASE 1: Cell already contains a formula
+  if (formula) {
+    cell.setFormula(formula + '+' + value);
+    return;
+  }
+
+  // CASE 2: Cell is completely blank
+  if (currentValue === '' || currentValue === null || currentValue === undefined) {
+    cell.setFormula('=' + value);
+    return;
+  }
+
+  // CASE 3: Cell contains a normal number or numeric string
+  let numVal = Number(currentValue);
+  if (isNaN(numVal) && typeof currentValue === 'string') {
+    numVal = Number(currentValue.replace(/[₹,\s]/g, '')) || 0;
+  }
+
+  if (!numVal) {
+    cell.setFormula('=' + value);
+  } else {
+    cell.setFormula('=' + numVal + '+' + value);
+  }
+}
+
+// ============================================================
+//  appendText — appends text with ' + ' separator
+// ============================================================
+function appendText(cell, newText) {
+  if (!newText) return;
+
+  const oldText = cell.getDisplayValue();
+  if (!oldText) {
+    cell.setValue(newText);
+  } else {
+    cell.setValue(oldText + ' + ' + newText);
+  }
+}
+
+// ============================================================
+//  formatReceiptDate — converts YYYY-MM-DD or date to DD-MMM-YYYY
+// ============================================================
+function formatReceiptDate(dateString) {
+  if (!dateString) {
+    return Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Kolkata', 'dd-MMM-yyyy');
+  }
+
+  // If YYYY-MM-DD string, parse safely to avoid timezone day rollover
+  if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString.trim())) {
+    const parts = dateString.trim().split('-');
+    const year  = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const day   = parseInt(parts[2], 10);
+    const dd    = String(day).padStart(2, '0');
+    return dd + '-' + MONTH_NAMES[month] + '-' + year;
+  }
+
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return String(dateString);
+
+  return Utilities.formatDate(
+    date,
+    Session.getScriptTimeZone() || 'Asia/Kolkata',
+    'dd-MMM-yyyy'
+  );
+}
+
+// ============================================================
+//  formatIndianNumber — formats number with Indian comma grouping
+// ============================================================
+function formatIndianNumber(number) {
+  return Number(number).toLocaleString('en-IN', {
+    maximumFractionDigits: 2
+  });
 }
 
 // ============================================================
 //  fetchRecentRecords — returns the latest N rows (~1 second!)
 // ============================================================
 function fetchRecentRecords(limit) {
-  const ss      = SpreadsheetApp.openById(SHEET_ID);
+  const ss      = getSpreadsheet();
   const sheet   = ss.getSheetByName(SHEET_NAME);
   const lastRow = sheet.getLastRow();
 
@@ -169,7 +527,7 @@ function fetchRecentRecords(limit) {
 //  fetchAllRecords — returns all invoice records (optimized)
 // ============================================================
 function fetchAllRecords() {
-  const ss      = SpreadsheetApp.openById(SHEET_ID);
+  const ss      = getSpreadsheet();
   const sheet   = ss.getSheetByName(SHEET_NAME);
   const lastRow = sheet.getLastRow();
 
@@ -224,7 +582,7 @@ function searchRecords(q) {
     return { error: 'Query too short. Minimum 2 characters.' };
   }
 
-  const ss      = SpreadsheetApp.openById(SHEET_ID);
+  const ss      = getSpreadsheet();
   const sheet   = ss.getSheetByName(SHEET_NAME);
   const lastRow = sheet.getLastRow();
   const rows    = sheet.getRange(2, 1, lastRow - 1, 16).getValues();
@@ -262,136 +620,4 @@ function searchRecords(q) {
   }
 
   return { query: q, count: results.length, results };
-}
-
-// ============================================================
-//  recordPayment — updates invoice row + logs payment entry
-//  Supports split Cash + Bank payments + Discount / CD
-// ============================================================
-function recordPayment(data) {
-  const rowIndex       = parseInt(data.rowIndex);
-  const cashAmount     = parseFloat(data.cash     || 0);
-  const bankAmount     = parseFloat(data.bank     || 0);
-  const discountAmount = parseFloat(data.discount || 0);
-  const totalPayment   = cashAmount + bankAmount;
-  const totalSettled   = totalPayment + discountAmount;
-  const receiptNo      = String(data.receipt || '').trim();
-  const remarks        = String(data.remarks || '').trim();
-
-  if (!rowIndex || totalSettled <= 0) {
-    return { error: 'Enter at least a Cash, Bank, or Discount amount.' };
-  }
-
-  const ss    = SpreadsheetApp.openById(SHEET_ID);
-  const sheet = ss.getSheetByName(SHEET_NAME);
-
-  // Read current row (16 columns)
-  const rowRange = sheet.getRange(rowIndex, 1, 1, 16);
-  const row      = rowRange.getValues()[0];
-
-  const currentPaid        = parseAmount(row[COL.PAID_UP]);
-  const currentDiscount    = parseAmount(row[COL.DISCOUNT]);
-  const currentOutstanding = parseAmount(row[COL.OUTSTANDING]);
-  const existingReceipt    = String(row[COL.RECEIPT] || '').trim();
-  const existingRemarks    = String(row[COL.REMARKS] || '').trim();
-
-  const newPaid        = currentPaid + totalPayment;
-  const newDiscount    = currentDiscount + discountAmount;
-  const newOutstanding = currentOutstanding - totalSettled;
-
-  // Determine MODE label
-  let mode = '';
-  if (cashAmount > 0 && bankAmount > 0) mode = 'Cash + Bank';
-  else if (cashAmount > 0)              mode = 'Cash';
-  else if (bankAmount > 0)              mode = 'Bank';
-  else if (discountAmount > 0)          mode = 'Discount';
-
-  // Append receipt number
-  const newReceipt = existingReceipt
-    ? (receiptNo ? existingReceipt + ' + ' + receiptNo : existingReceipt)
-    : receiptNo;
-
-  // Append remarks
-  const newRemarks = existingRemarks
-    ? (remarks ? existingRemarks + ' | ' + remarks : existingRemarks)
-    : remarks;
-
-  // ── Update invoice row ──────────────────────────────────────
-  if (discountAmount > 0 || newDiscount > 0) {
-    sheet.getRange(rowIndex, COL.DISCOUNT + 1).setValue(formatAmount(newDiscount));
-  }
-  sheet.getRange(rowIndex, COL.PAID_UP + 1).setValue(formatAmount(newPaid));
-  sheet.getRange(rowIndex, COL.OUTSTANDING + 1).setValue(formatAmount(newOutstanding));
-  if (mode) sheet.getRange(rowIndex, COL.MODE + 1).setValue(mode);
-  if (receiptNo) sheet.getRange(rowIndex, COL.RECEIPT + 1).setValue(newReceipt);
-  if (remarks)   sheet.getRange(rowIndex, COL.REMARKS + 1).setValue(newRemarks);
-
-  // Auto-mark PAID if fully settled
-  if (newOutstanding <= 0) {
-    sheet.getRange(rowIndex, COL.STATUS + 1).setValue('PAID');
-  }
-
-  // ── Append to PAYMENT_LOG sheet ────────────────────────────
-  logPayment(ss, {
-    date        : Utilities.formatDate(new Date(), 'Asia/Kolkata', 'dd MMM yyyy HH:mm'),
-    invoice     : String(row[COL.INVOICE]  || ''),
-    customer    : String(row[COL.CUSTOMER] || ''),
-    cash        : cashAmount > 0 ? formatAmount(cashAmount) : '',
-    bank        : bankAmount > 0 ? formatAmount(bankAmount) : '',
-    discount    : discountAmount > 0 ? formatAmount(discountAmount) : '',
-    total       : formatAmount(totalPayment),
-    mode        : mode,
-    receipt     : receiptNo,
-    remarks     : remarks,
-    outstanding : formatAmount(newOutstanding),
-  });
-
-  return {
-    success        : true,
-    rowIndex       : rowIndex,
-    newPaidUp      : formatAmount(newPaid),
-    newDiscount    : formatAmount(newDiscount),
-    newOutstanding : formatAmount(newOutstanding),
-    mode           : mode,
-    receipt        : newReceipt,
-  };
-}
-
-// ============================================================
-//  logPayment — appends a row to PAYMENT_LOG sheet
-// ============================================================
-function logPayment(ss, entry) {
-  const LOG_SHEET = 'PAYMENT_LOG';
-  let log = ss.getSheetByName(LOG_SHEET);
-
-  if (!log) {
-    log = ss.insertSheet(LOG_SHEET);
-    log.appendRow([
-      'Date & Time', 'Invoice Number', 'Customer',
-      'Cash', 'Bank', 'Discount', 'Total', 'Mode',
-      'Receipt No.', 'Remarks', 'Outstanding After'
-    ]);
-    log.getRange(1, 1, 1, 11).setFontWeight('bold');
-  }
-
-  log.appendRow([
-    entry.date, entry.invoice, entry.customer,
-    entry.cash, entry.bank, entry.discount || '', entry.total, entry.mode,
-    entry.receipt, entry.remarks, entry.outstanding,
-  ]);
-}
-
-// ============================================================
-//  Helpers
-// ============================================================
-function parseAmount(val) {
-  const cleaned = String(val || '0').replace(/[₹,\s]/g, '');
-  const num     = parseFloat(cleaned);
-  return isNaN(num) ? 0 : num;
-}
-
-function formatAmount(num) {
-  const sign = num < 0 ? '-' : '';
-  const abs  = Math.abs(num);
-  return sign + '₹' + abs.toLocaleString('en-IN');
 }

@@ -316,6 +316,13 @@
       </span>
     </div>
 
+    <!-- Receipt Date -->
+    <div class="mb-3">
+      <label class="text-[11px] text-slate-500 font-bold uppercase tracking-wider block mb-1">📅 Receipt Date</label>
+      <input id="payDate" type="date"
+        class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+    </div>
+
     <!-- Quick Fill Buttons -->
     <div id="quickFillRow" class="flex gap-1.5 mb-3">
       <button type="button" onclick="quickFillPayment('cash')"
@@ -1253,6 +1260,13 @@ function openDetailView(inv, pushHistory = true) {
   document.getElementById('payRemarks').value = '';
   document.getElementById('paymentPreviewRow').classList.add('hidden');
 
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth() + 1).padStart(2, '0');
+  const dd = String(today.getDate()).padStart(2, '0');
+  const dateInput = document.getElementById('payDate');
+  if (dateInput) dateInput.value = `${yyyy}-${mm}-${dd}`;
+
   showView('detail');
   document.getElementById('headerTitle').textContent = 'Invoice Details';
   document.getElementById('btnBack').classList.remove('hidden');
@@ -1349,12 +1363,20 @@ async function submitPayment() {
     <span>Recording Payment…</span>
   `;
 
+  const payDate = (document.getElementById('payDate') && document.getElementById('payDate').value)
+    ? document.getElementById('payDate').value
+    : new Date().toISOString().split('T')[0];
+
   const payload = {
     action: 'pay',
+    row: currentInvoice.rowIndex,
     rowIndex: currentInvoice.rowIndex,
+    sheetName: 'MARCH-SEPT',
+    date: payDate,
     cash: cash,
     bank: bank,
     discount: disc,
+    receiptNo: receipt,
     receipt: receipt,
     remarks: remarks
   };
@@ -1378,10 +1400,14 @@ async function submitPayment() {
     if (!data || (!data.success && !data.error)) {
       const qs = new URLSearchParams({
         action: 'pay',
+        row: String(currentInvoice.rowIndex),
         rowIndex: String(currentInvoice.rowIndex),
+        sheetName: 'MARCH-SEPT',
+        date: payDate,
         cash: String(cash),
         bank: String(bank),
         discount: String(disc),
+        receiptNo: receipt,
         receipt: receipt,
         remarks: remarks
       }).toString();
@@ -1397,6 +1423,8 @@ async function submitPayment() {
       if (data.newDiscount) currentInvoice.discount = data.newDiscount;
       currentInvoice.mode = data.mode;
       if (data.receipt) currentInvoice.receipt = data.receipt;
+      if (data.remarks) currentInvoice.remarks = data.remarks;
+      if (data.status) currentInvoice.status = data.status;
 
       const newOutNum = parseAmount(data.newOutstanding);
       const newPaidNum = parseAmount(data.newPaidUp);
@@ -1420,15 +1448,28 @@ async function submitPayment() {
         p.pendingCount = p.invoices.filter(i => i.outNum > 0).length;
       }
 
-      // 3. Persist update to IndexedDB
+      // 3. Update rawRow in allRows to keep cache in sync
+      const rawRow = allRows.find(r => r[0] === currentInvoice.rowIndex);
+      if (rawRow) {
+        rawRow[5] = data.newPaidUp;
+        rawRow[6] = currentInvoice.status;
+        rawRow[7] = data.mode;
+        rawRow[8] = data.newOutstanding;
+        if (data.receipt) rawRow[9] = data.receipt;
+        if (data.remarks) rawRow[10] = data.remarks;
+        if (data.newDiscount) rawRow[13] = data.newDiscount;
+      }
+
+      // 4. Persist update to IndexedDB
       setStoredData('all_rows', allRows);
 
-      // 4. Update UI details card
+      // 5. Update UI details card
       setText('dPaidUp', data.newPaidUp);
       setText('dOutstanding', data.newOutstanding);
       if (data.newDiscount) setText('dDiscount', data.newDiscount);
       setText('dMode', data.mode);
       if (data.receipt) setText('dReceipt', data.receipt);
+      if (data.remarks) setText('dRemarks', data.remarks);
 
       const sBadge = document.getElementById('dStatus');
       const isSettled = newOutNum <= 0;
@@ -1446,6 +1487,13 @@ async function submitPayment() {
       document.getElementById('payReceipt').value = '';
       document.getElementById('payRemarks').value = '';
       document.getElementById('paymentPreviewRow').classList.add('hidden');
+
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      const dateInput = document.getElementById('payDate');
+      if (dateInput) dateInput.value = `${yyyy}-${mm}-${dd}`;
 
       let msg = `✅ Settlement recorded!`;
       if (cash + bank > 0) msg += ` Paid: ${formatINR(cash + bank)}.`;
